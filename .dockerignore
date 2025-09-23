@@ -1,0 +1,79 @@
+# Files and directories to exclude from Docker build context
+
+# Version control
+.git
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Logs and temporary files
+logs/
+*.log
+temp/
+tmp/
+
+# Backup files
+backups/
+*.backup
+
+# Environment files
+.env*
+!.env.example
+
+# Development files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Node.js (if applicable)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build artifacts
+dist/
+build/
+target/
+
+# Test files
+test/
+tests/
+spec/
+__tests__/
+coverage/
+
+# Docker files (avoid recursive copies)
+Dockerfile*
+docker-compose*.yml
+
+# Kubernetes files
+k8s/
+kubernetes/
+*.yaml
+*.yml
+
+# CI/CD files
+.github/
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# SSL certificates (unless specifically needed)
+*.pem
+*.crt
+*.key
+ssl/
