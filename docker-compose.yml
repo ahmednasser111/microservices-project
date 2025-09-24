@@ -9,7 +9,7 @@ services:
     container_name: auth-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: Pos#3014708
+      POSTGRES_PASSWORD: "Pos#3014708"
       POSTGRES_DB: authdb
     ports:
       - "5433:5432"
@@ -29,7 +29,7 @@ services:
     container_name: chat-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: Pos#3014708
+      POSTGRES_PASSWORD: "Pos#3014708"
       POSTGRES_DB: chatdb
     ports:
       - "5434:5432"
