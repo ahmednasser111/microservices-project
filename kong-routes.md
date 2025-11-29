@@ -20,6 +20,8 @@ curl -X POST http://localhost:8001/services \
 # Create route
 
 curl -X POST http://localhost:8001/services/chat-service/routes \
- --data name=chat-route \
- --data paths[]=/chat \
- --data strip_path=true
+ --data 'name=socket-route' \
+ --data 'protocols[]=http' \
+ --data 'protocols[]=https' \
+ --data 'paths[]=/socket.io' \
+ --data 'strip_path=false'
