@@ -1,0 +1,8 @@
+[Unit]
+Description=Deallocate this VM if idle
+After=docker.service
+
+[Service]
+Type=oneshot
+User=azureuser
+ExecStart=/home/azureuser/microservices-project/deploy/idle-shutdown.sh

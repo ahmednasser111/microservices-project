@@ -22,10 +22,20 @@
 # directory — e.g. testing a prod build locally alongside the dev stack.
 name: microservices-task-prod
 
+# Docker's default json-file log driver keeps logs forever unless bounded — this VM runs
+# indefinitely, so cap it. Also used by deploy/idle-shutdown.sh to read Caddy's recent access
+# log without it growing unbounded.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:15-alpine
     container_name: postgres
+    logging: *default-logging
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -46,6 +56,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis
+    logging: *default-logging
     command: redis-server --appendonly yes --maxmemory 24mb --maxmemory-policy allkeys-lru
     volumes:
       - redis-data:/data
@@ -62,6 +73,7 @@ services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.3.0
     container_name: zookeeper
+    logging: *default-logging
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -85,6 +97,7 @@ services:
   kafka:
     image: confluentinc/cp-kafka:7.3.0
     container_name: kafka
+    logging: *default-logging
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -115,6 +128,7 @@ services:
       context: ./auth-service
       dockerfile: Dockerfile
     container_name: auth-service
+    logging: *default-logging
     environment:
       PORT: 3001
       NODE_ENV: production
@@ -147,6 +161,7 @@ services:
       context: ./chat-service
       dockerfile: Dockerfile
     container_name: chat-service
+    logging: *default-logging
     environment:
       PORT: 3002
       NODE_ENV: production
@@ -175,6 +190,7 @@ services:
   kong:
     image: kong:3.6
     container_name: kong-gateway
+    logging: *default-logging
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
@@ -214,6 +230,7 @@ services:
   caddy:
     image: caddy:2-alpine
     container_name: caddy
+    logging: *default-logging
     environment:
       AZURE_DNS_LABEL: ${AZURE_DNS_LABEL}
     ports:
