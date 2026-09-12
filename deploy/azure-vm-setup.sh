@@ -67,6 +67,8 @@ fi
 
 echo "==> Building and starting the production stack"
 cd "$APP_DIR"
-docker compose -f docker-compose.prod.yml up -d --build
+# Use sudo here rather than relying on the docker group membership added above — that only
+# takes effect on a fresh login, not within this already-running script/session.
+sudo docker compose -f docker-compose.prod.yml up -d --build
 
 echo "==> Done. Check status with: docker compose -f docker-compose.prod.yml ps"
