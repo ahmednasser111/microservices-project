@@ -1,0 +1,243 @@
+# Trimmed production compose file, sized for an Azure Standard_B1s free-tier VM (1 vCPU / 1GB
+# RAM). See deploy/README.md for the full deploy runbook. Requires a `.env` next to this file
+# (copy `.env.production.example` and fill it in) — Compose loads it automatically.
+#
+# Usage:  docker compose -f docker-compose.prod.yml up -d --build
+#
+# Differs from the dev docker-compose.yml:
+#   - auth-postgres + chat-postgres merged into one `postgres` service (two databases,
+#     see deploy/postgres-init/create-multiple-dbs.sh)
+#   - Kong runs DB-less (declarative deploy/kong/kong.yml) — no kong-database/kong-migrations
+#   - Konga (admin UI) dropped — not needed for a headless deploy, and DB-less Kong doesn't
+#     have a Postgres for it to store its own config in anyway
+#   - Caddy added in front of Kong for automatic free HTTPS (Let's Encrypt)
+#   - Only Caddy's 80/443 are published to the host; Kong, the services, and the databases
+#     are reachable only over the internal docker network
+#   - Every service has a mem_limit tuned to fit the 1GB box; Kafka/Zookeeper get small JVM
+#     heaps via KAFKA_HEAP_OPTS. Combined limits run a bit over 1GB as ceilings, not
+#     reservations — pair this with the 2GB swapfile deploy/azure-vm-setup.sh creates.
+
+# Explicit project name so this never shares a Compose project namespace (containers,
+# volumes, default network) with docker-compose.yml when both are run from the same
+# directory — e.g. testing a prod build locally alongside the dev stack.
+name: microservices-task-prod
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_MULTIPLE_DATABASES: authdb,chatdb
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deploy/postgres-init/create-multiple-dbs.sh:/docker-entrypoint-initdb.d/create-multiple-dbs.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 160m
+    mem_reservation: 96m
+    networks:
+      - microservices-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: redis-server --appendonly yes --maxmemory 24mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 40m
+    mem_reservation: 24m
+    networks:
+      - microservices-network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      KAFKA_HEAP_OPTS: "-Xmx96M -Xms96M"
+      # Works around a JDK cgroup-v2 NullPointerException (java.base
+      # jdk.internal.platform.cgroupv2.CgroupV2Subsystem.getInstance) that crashes this
+      # image's bundled JVM on cgroup-v2 hosts (Docker Desktop/WSL2, and Ubuntu 22.04+ on the
+      # Azure VM, both default to cgroup v2). Safe here since heap size is set explicitly
+      # above rather than relying on container-aware auto-sizing.
+      KAFKA_OPTS: "-XX:-UseContainerSupport"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo 'ruok' | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 160m
+    mem_reservation: 128m
+    networks:
+      - microservices-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    container_name: kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+      KAFKA_DELETE_TOPIC_ENABLE: true
+      KAFKA_HEAP_OPTS: "-Xmx256M -Xms256M"
+      KAFKA_OPTS: "-XX:-UseContainerSupport"
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    mem_limit: 320m
+    mem_reservation: 256m
+    networks:
+      - microservices-network
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/authdb
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKER: kafka:9092
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: 24h
+      LOG_LEVEL: warn
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      SENTRY_DSN: ${SENTRY_DSN_AUTH}
+      SENTRY_ENVIRONMENT: production
+      SENTRY_SAMPLE_RATE: 0.2
+      SENTRY_TRACES_SAMPLE_RATE: 0.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 150m
+    mem_reservation: 100m
+    networks:
+      - microservices-network
+
+  chat-service:
+    build:
+      context: ./chat-service
+      dockerfile: Dockerfile
+    container_name: chat-service
+    environment:
+      PORT: 3002
+      NODE_ENV: production
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/chatdb
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKER: kafka:9092
+      JWT_SECRET: ${JWT_SECRET}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      LOG_LEVEL: warn
+      SENTRY_DSN: ${SENTRY_DSN_CHAT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    restart: unless-stopped
+    mem_limit: 150m
+    mem_reservation: 100m
+    networks:
+      - microservices-network
+
+  kong:
+    image: kong:3.6
+    container_name: kong-gateway
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_PLUGINS: bundled
+      KONG_LOG_LEVEL: warn
+      # Kong defaults nginx_worker_processes to "auto" (one worker per detected CPU). Pinned
+      # to 1 because more workers than the VM's single vCPU just multiplies memory use for no
+      # throughput gain here, and because "auto" on a dev machine with many cores was spawning
+      # that many workers, blowing well past mem_limit and getting OOM-killed (repeated
+      # "worker process exited on signal 9" in the logs) even though the real 1-vCPU target
+      # VM would have resolved "auto" to 1 anyway.
+      KONG_NGINX_WORKER_PROCESSES: "1"
+    volumes:
+      - ./deploy/kong/kong.yml:/kong/declarative/kong.yml:ro
+    depends_on:
+      auth-service:
+        condition: service_started
+      chat-service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+    mem_limit: 224m
+    mem_reservation: 128m
+    networks:
+      - microservices-network
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    environment:
+      AZURE_DNS_LABEL: ${AZURE_DNS_LABEL}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      kong:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 48m
+    mem_reservation: 24m
+    networks:
+      - microservices-network
+
+volumes:
+  postgres-data:
+  redis-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  microservices-network:
+    driver: bridge

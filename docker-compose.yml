@@ -9,7 +9,7 @@ services:
     container_name: auth-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "Pos#3014708"
+      POSTGRES_PASSWORD: "${AUTH_POSTGRES_PASSWORD}"
       POSTGRES_DB: authdb
     ports:
       - "5433:5432"
@@ -29,7 +29,7 @@ services:
     container_name: chat-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "Pos#3014708"
+      POSTGRES_PASSWORD: "${CHAT_POSTGRES_PASSWORD}"
       POSTGRES_DB: chatdb
     ports:
       - "5434:5432"
@@ -49,7 +49,7 @@ services:
     container_name: kong-database
     environment:
       POSTGRES_USER: kong
-      POSTGRES_PASSWORD: kongpass
+      POSTGRES_PASSWORD: ${KONG_PG_PASSWORD}
       POSTGRES_DB: kong
     volumes:
       - kong-postgres-data:/var/lib/postgresql/data
@@ -144,14 +144,14 @@ services:
     environment:
       PORT: 3001
       NODE_ENV: development
-      DATABASE_URL: postgres://postgres:Pos%233014708@auth-postgres:5432/authdb
+      DATABASE_URL: postgres://postgres:${AUTH_POSTGRES_PASSWORD_ENCODED}@auth-postgres:5432/authdb
       REDIS_URL: redis://redis:6379
       KAFKA_BROKER: kafka:9092
-      JWT_SECRET: 01aee198bd1475f54ba9fbc7663430a8e659d8755b550fcb322008f0f66d3719
+      JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: 24h
       LOG_LEVEL: debug
       ALLOWED_ORIGINS: http://localhost:3000,http://localhost:8000,http://localhost:8001
-      SENTRY_DSN: https://6de64903272f02b1ec1d382fa60a563d@o4510035651395584.ingest.de.sentry.io/4510035656769616
+      SENTRY_DSN: ${SENTRY_DSN_AUTH}
       SENTRY_ENVIRONMENT: development
       SENTRY_SAMPLE_RATE: 1.0
       SENTRY_TRACES_SAMPLE_RATE: 1.0
@@ -177,13 +177,13 @@ services:
     environment:
       PORT: 3002
       NODE_ENV: development
-      DATABASE_URL: postgres://postgres:Pos%233014708@chat-postgres:5432/chatdb
+      DATABASE_URL: postgres://postgres:${CHAT_POSTGRES_PASSWORD_ENCODED}@chat-postgres:5432/chatdb
       REDIS_URL: redis://redis:6379
       KAFKA_BROKER: kafka:9092
-      JWT_SECRET: 01aee198bd1475f54ba9fbc7663430a8e659d8755b550fcb322008f0f66d3719
+      JWT_SECRET: ${JWT_SECRET}
       ALLOWED_ORIGINS: http://localhost:3000,http://localhost:8000,http://localhost:8001
       LOG_LEVEL: debug
-      SENTRY_DSN: https://96f53729f88ff3c970a9d10448c277cb@o4510035651395584.ingest.de.sentry.io/4510038750986320
+      SENTRY_DSN: ${SENTRY_DSN_CHAT}
     depends_on:
       chat-postgres:
         condition: service_healthy
@@ -208,7 +208,7 @@ services:
       KONG_DATABASE: postgres
       KONG_PG_HOST: kong-database
       KONG_PG_USER: kong
-      KONG_PG_PASSWORD: kongpass
+      KONG_PG_PASSWORD: ${KONG_PG_PASSWORD}
       KONG_PG_DATABASE: kong
     depends_on:
       kong-database:
@@ -225,7 +225,7 @@ services:
       KONG_DATABASE: postgres
       KONG_PG_HOST: kong-database
       KONG_PG_USER: kong
-      KONG_PG_PASSWORD: kongpass
+      KONG_PG_PASSWORD: ${KONG_PG_PASSWORD}
       KONG_PG_DATABASE: kong
       KONG_PROXY_ACCESS_LOG: /dev/stdout
       KONG_ADMIN_ACCESS_LOG: /dev/stdout
@@ -262,7 +262,7 @@ services:
       DB_ADAPTER: postgres
       DB_HOST: kong-database
       DB_USER: kong
-      DB_PASSWORD: kongpass
+      DB_PASSWORD: ${KONG_PG_PASSWORD}
       DB_DATABASE: konga_db
       NODE_ENV: development
     ports:

@@ -1,0 +1,9 @@
+{$AZURE_DNS_LABEL} {
+	reverse_proxy kong:8000
+
+	encode gzip
+
+	log {
+		output stdout
+	}
+}

@@ -1,7 +1,7 @@
 # Makefile for Kong API Gateway Management
 # Usage: make <target>
 
-.PHONY: help setup start stop restart logs health config test clean
+.PHONY: help setup start stop restart logs health config test clean prod-up prod-down prod-logs
 
 # Colors
 GREEN := \033[0;32m
@@ -54,6 +54,11 @@ help:
 	@echo "  maintenance-off - Disable maintenance mode"
 	@echo "  clean          - Clean up containers and volumes"
 	@echo "  clean-all      - Clean everything including images"
+	@echo ""
+	@echo "$(BLUE)Production Commands (see deploy/README.md):$(NC)"
+	@echo "  prod-up        - Build and start the trimmed prod stack (docker-compose.prod.yml)"
+	@echo "  prod-down      - Stop the prod stack"
+	@echo "  prod-logs      - Follow prod stack logs"
 
 # Variables
 KONG_ADMIN_URL := http://localhost:8001
@@ -128,6 +133,19 @@ restart-all:
 	@echo "$(YELLOW)⏳ Waiting for services to be ready...$(NC)"
 	@sleep 30
 	@$(MAKE) health
+
+# Production Deployment (see deploy/README.md) — trimmed, DB-less Kong, run on the VM
+prod-up:
+	@echo "$(BLUE)🚀 Starting production stack...$(NC)"
+	@docker compose -f docker-compose.prod.yml up -d --build
+
+prod-down:
+	@echo "$(BLUE)🛑 Stopping production stack...$(NC)"
+	@docker compose -f docker-compose.prod.yml down
+
+prod-logs:
+	@echo "$(BLUE)📋 Production stack logs:$(NC)"
+	@docker compose -f docker-compose.prod.yml logs -f
 
 # Monitoring Commands
 logs:
